@@ -29,7 +29,8 @@ While there isn't a direct one-click button for custom Deployment Manager templa
 ## Prerequisites
 
 1.  A Google Cloud Platform (GCP) account with billing enabled (required for free tier activation).
-2.  The Cloud Deployment Manager API must be enabled for your project. You can enable it by visiting [this link](https://console.cloud.google.com/flows/enableapi?apiid=deploymentmanager.googleapis.com) and selecting your project.
+2.  The **Cloud Deployment Manager API** must be enabled for your project. You can enable it by visiting [this link](https://console.cloud.google.com/flows/enableapi?apiid=deploymentmanager.googleapis.com) and selecting your project.
+3.  The **Compute Engine API** must be enabled for your project. This is required to create VMs and firewalls. You can enable it by visiting [this link](https://console.cloud.google.com/flows/enableapi?apiid=compute.googleapis.com) and selecting your project. If you encounter errors related to `compute.googleapis.com` being disabled during deployment, ensure you have enabled it and waited a few minutes for the change to propagate.
 
 ## ⚙️ Setup Steps (In Cloud Shell)
 
@@ -111,4 +112,4 @@ gcloud deployment-manager deployments delete hyperswitch-deployment
 *   The `f1-micro` instance, a small amount of standard persistent disk (10GB), and network egress fall under the GCP Free Tier, but limits apply.
 *   Ensure your account doesn't have other services consuming the free tier allowance.
 *   This setup **avoids Cloud SQL** to minimize the risk of accidental charges, running PostgreSQL in Docker on the VM.
-*   Always monitor your GCP billing page. 
+*   Always monitor your GCP billing page.
