@@ -1,114 +1,114 @@
-# Hyperswitch GCP One-Click Deploy (Free Tier Focused)
+# Hyperswitch GCP One-Click Deploy (Free Tier Focused) - Deployment Manager Edition
 
-This project provides a Terraform-based solution to deploy Hyperswitch, along with PostgreSQL and Redis, onto a Google Cloud Platform (GCP) f1-micro Compute Engine instance. It's designed with the GCP free tier in mind.
+This project provides a Google Cloud Deployment Manager solution to deploy Hyperswitch, along with PostgreSQL and Redis, onto a GCP f1-micro Compute Engine instance. It's designed with the GCP free tier in mind.
 
 ## 🎯 Goal
-Create a one-click GCP deployment solution for Hyperswitch, suitable for development/testing environments, aiming to stay within GCP's free-tier limits.
+Create a one-click GCP deployment solution for Hyperswitch, suitable for development/testing environments, aiming to stay within GCP's free-tier limits, using Google Cloud Deployment Manager.
 
 ## 🧱 Components
 *   **VM**: GCP Compute Engine `f1-micro` instance running Ubuntu 22.04 LTS.
-*   **Redis**: Installed as a local process (`redis-server`) on the VM.
-*   **Hyperswitch App**: Runs as a Docker container, managed by Docker Compose. Image: `hyperswitch/hyperswitch:latest` (configurable in `startup.sh`).
-*   **PostgreSQL Database**: Runs as a Docker container on the same VM, managed by Docker Compose.
-*   **Secrets/Configuration**: Managed via an `.env` file created by the `startup.sh` script on the VM. **Review and update default secrets in `startup.sh` before production use.**
+*   **Redis**: Installed as a local process (`redis-server`) on the VM via startup script.
+*   **Hyperswitch App**: Runs as a Docker container, managed by Docker Compose via startup script. Image: `hyperswitch/hyperswitch:latest`.
+*   **PostgreSQL Database**: Runs as a Docker container on the same VM, managed by Docker Compose via startup script.
+*   **Secrets/Configuration**: Managed via an `.env` file created by the `startup.sh` content (embedded in `deployment.jinja`) on the VM. **Review and update default secrets in `deployment.jinja` before production use.**
+
+## 📁 Project Files
+*   `deployment.jinja`: The main Deployment Manager template (Jinja2 format).
+*   `schema.yaml`: Defines input properties for the `deployment.jinja` template.
+*   `startup.sh`: (Content is embedded in `deployment.jinja`) Bootstraps Redis, Docker, and Hyperswitch on the VM.
+*   `README.md`: This setup guide.
 
 ## 🚀 Deploy to GCP (Cloud Shell)
 
-[![Deploy to GCP](https://deploy.cloud.run/button.svg)](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/manojradhakrishnan/hyperswitch-gcp-deploy&cloudshell_working_dir=hyperswitch-gcp-deploy&cloudshell_tutorial=README.md)
+While there isn't a direct one-click button for custom Deployment Manager templates from a Git repo in the same way as Terraform, you can easily deploy using Cloud Shell:
 
-**Note**: Replace `YOUR_USERNAME` in the button URL above with your actual GitHub username after you've forked/cloned and pushed this repository to your own GitHub account.
+1.  **Open Cloud Shell with this Repository:**
+    [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/manojradhakrishnan/hyperswitch-gcp-deploy&cloudshell_working_dir=hyperswitch-gcp-deploy&cloudshell_git_branch=main&cloudshell_tutorial=README.md)
+    (Ensure `manojradhakrishnan` is your GitHub username if you forked, and `main` is your branch)
 
 ## Prerequisites
 
 1.  A Google Cloud Platform (GCP) account with billing enabled (required for free tier activation).
-2.  `gcloud` CLI installed and authenticated (if running Terraform locally).
-3.  Terraform CLI (0.14+) installed (if running Terraform locally).
+2.  The Cloud Deployment Manager API must be enabled for your project. You can enable it by visiting [this link](https://console.cloud.google.com/flows/enableapi?apiid=deploymentmanager.googleapis.com) and selecting your project.
 
-## ⚙️ Setup Steps (Cloud Shell Recommended)
+## ⚙️ Setup Steps (In Cloud Shell)
 
-1.  **Clone the Repository**:
-    If not using the "Deploy to GCP" button, clone your repository:
+After opening Cloud Shell using the button above, your repository files will be available.
+
+1.  **Navigate to the directory (if not already there)**:
     ```bash
-    git clone https://github.com/manojradhakrishnan/hyperswitch-gcp-deploy.git
     cd hyperswitch-gcp-deploy
     ```
-    (Replace `YOUR_USERNAME` with your GitHub username)
 
 2.  **Review Configuration (Optional but Recommended)**:
-    *   You can modify `variables.tf` to change the default GCP region, zone, or instance name.
-    *   **Crucially, review the `/opt/hyperswitch/.env` file content within `startup.sh`**. You will likely want to update placeholder values like `ADMIN_API_KEY` and any other Hyperswitch-specific configurations *before* deploying if this is for more than a quick test.
+    *   Inspect `deployment.jinja` and `schema.yaml`.
+    *   **Crucially, review the `.env` file content within the `startup-script` section of `deployment.jinja`**. You will likely want to update placeholder values like `ADMIN_API_KEY`.
 
-3.  **Initialize Terraform**:
-    This command downloads the necessary provider plugins.
+3.  **Deploy using Google Cloud Deployment Manager**:
+    You'll need your GCP Project ID.
     ```bash
-    terraform init
-    ```
+    # Set your Project ID (replace YOUR_PROJECT_ID)
+    gcloud config set project YOUR_PROJECT_ID
 
-4.  **Apply Terraform Configuration**:
-    This command will provision the GCP resources. You'll be prompted to enter your GCP Project ID.
-    ```bash
-    terraform apply -var="project_id=your-gcp-project-id"
+    # Create the deployment (you can change 'hyperswitch-deployment' to a name of your choice)
+    # It will use default values from schema.yaml unless you provide properties.
+    gcloud deployment-manager deployments create hyperswitch-deployment \
+        --config deployment.jinja \
+        --properties "project_id:YOUR_PROJECT_ID,zone:us-central1-a,deployment_name:hyperswitch-instance"
     ```
-    Replace `your-gcp-project-id` with your actual GCP Project ID. Type `yes` when prompted to confirm the changes.
+    *   Replace `YOUR_PROJECT_ID` with your actual GCP Project ID in both commands.
+    *   You can customize `zone` and `deployment_name` properties as needed. If not specified, defaults from `schema.yaml` are used for `zone` and `deployment_name`.
 
 ## ✅ Post-Deployment Verification
 
-1.  **Wait for Startup**: Allow a few minutes (5-10 min) for the VM to provision and the `startup.sh` script to complete all installations and configurations. You can monitor the startup script progress by SSHing into the VM and checking `/var/log/startup-script.log`.
-2.  **Find VM External IP**:
-    *   From the Terraform output: `terraform output instance_ip`
-    *   Or via GCP Console: Navigate to Compute Engine > VM instances.
-    *   Or via `gcloud`: `gcloud compute instances list --filter="name=hyperswitch-vm" --format="value(networkInterfaces[0].accessConfigs[0].natIP)" --project your-gcp-project-id`
+1.  **Wait for Deployment**: Allow a few minutes (5-10 min) for the resources to be provisioned and the `startup.sh` script to complete.
+2.  **Get VM External IP**: Check the outputs of the deployment or find it in the GCP Console.
+    ```bash
+    gcloud deployment-manager deployments describe hyperswitch-deployment --format="value(outputs.instanceIp)"
+    # Or to see all outputs:
+    # gcloud deployment-manager manifest describe --deployment hyperswitch-deployment --manifest <MANIFEST_NAME_FROM_DESCRIBE_DEPLOYMENT>
+    # The manifest name is usually the deployment name plus a timestamp, e.g., hyperswitch-deployment-1234567890.yaml
+    # Simpler: go to GCP Console -> Deployment Manager -> select your deployment -> View Details/Outputs
+    # Or: GCP Console -> Compute Engine -> VM Instances page to find the IP of 'hyperswitch-instance-vm' (or similar name).
+    ```
+    The `outputs` section in `deployment.jinja` defines `instanceIp`.
+
 3.  **Access Hyperswitch**: Open your browser and navigate to `http://<VM_EXTERNAL_IP>:8080`.
-4.  **SSH into the VM**:
+4.  **SSH into the VM**: Use the `sshCommand` output from the deployment or `gcloud`:
     ```bash
-    # Using the Terraform output:
-    # terraform output ssh_command 
-    # (and run the printed command)
-    # Or manually:
-    gcloud compute ssh hyperswitch-vm --project your-gcp-project-id --zone <your_vm_zone> 
-    ```
-    (Replace `your-gcp-project-id` and `<your_vm_zone>` if you changed defaults).
-5.  **Verify Redis**:
-    Once SSH'd into the VM:
-    ```bash
-    redis-cli ping
-    ```
-    Expected output: `PONG`
-6.  **Verify Docker Containers**:
-    ```bash
-    sudo docker ps
-    ```
-    You should see `hyperswitch_app` and `hyperswitch_postgres` containers running.
-7.  **Check Logs**:
-    *   Hyperswitch App: `sudo docker logs hyperswitch_app`
-    *   PostgreSQL: `sudo docker logs hyperswitch_postgres`
-    *   Startup Script: `cat /var/log/startup-script.log`
+    # From deployment output (if available and correctly formatted)
+    # gcloud deployment-manager deployments describe hyperswitch-deployment --format="value(outputs.sshCommand)" | bash
 
-## 🔄 Updating Hyperswitch
+    # Or manually (replace YOUR_PROJECT_ID and ZONE and VM_NAME as needed):
+    # The VM name will be like 'hyperswitch-instance-vm' based on default deployment_name
+    gcloud compute ssh $(gcloud deployment-manager deployments describe hyperswitch-deployment --format="value(outputs.instanceName)") --project YOUR_PROJECT_ID --zone <ZONE_FROM_PROPERTIES_OR_SCHEMA>
+    ```
 
-To update the Hyperswitch application to a newer version (assuming the image tag is updated, e.g., `latest` pulls a new version):
-1.  SSH into the VM.
-2.  Navigate to the Hyperswitch directory: `cd /opt/hyperswitch`
-3.  Pull the latest image for the `hyperswitch` service (as defined in `docker-compose.yml`):
-    ```bash
-    sudo docker compose pull hyperswitch 
-    ```
-4.  Recreate the Hyperswitch container with the new image:
-    ```bash
-    sudo docker compose up -d --force-recreate hyperswitch
-    ```
+5.  **Verify Services on VM** (once SSH'd):
+    *   Redis: `redis-cli ping` (Expected: `PONG`)
+    *   Docker: `sudo docker ps` (See `hyperswitch_app`, `hyperswitch_postgres`)
+    *   Logs: `/var/log/startup-script.log`, `sudo docker logs hyperswitch_app`, `sudo docker logs hyperswitch_postgres`
+
+## 🔄 Updating the Deployment
+
+If you change `deployment.jinja` or `schema.yaml`:
+```bash
+gcloud deployment-manager deployments update hyperswitch-deployment \
+    --config deployment.jinja \
+    --properties "project_id:YOUR_PROJECT_ID,zone:us-central1-a,deployment_name:hyperswitch-instance"
+```
 
 ## 🧹 Cleanup
 
-To remove all resources created by this Terraform configuration:
+To delete all resources created by this deployment:
 ```bash
-terraform destroy -var="project_id=your-gcp-project-id"
+gcloud deployment-manager deployments delete hyperswitch-deployment
 ```
-Type `yes` when prompted.
+(Type `y` when prompted).
 
 ## ⚠️ Important Notes on GCP Free Tier
 
-*   The `f1-micro` instance, a small amount of standard persistent disk (up to 30GB, this uses 10GB for boot + Docker volume), and network egress fall under the GCP Free Tier, but limits apply (e.g., one f1-micro instance per account, region-specific).
-*   Ensure your account doesn't have other services consuming the free tier allowance for these resources.
-*   This setup **avoids Cloud SQL** to minimize the risk of accidental charges, running PostgreSQL in Docker on the VM instead.
-*   Always monitor your GCP billing page to understand your usage. 
+*   The `f1-micro` instance, a small amount of standard persistent disk (10GB), and network egress fall under the GCP Free Tier, but limits apply.
+*   Ensure your account doesn't have other services consuming the free tier allowance.
+*   This setup **avoids Cloud SQL** to minimize the risk of accidental charges, running PostgreSQL in Docker on the VM.
+*   Always monitor your GCP billing page. 

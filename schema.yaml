@@ -1,0 +1,24 @@
+info:
+  title: Hyperswitch GCP Deployment
+  author: You
+  description: Deploys Hyperswitch on a single f1-micro VM in GCP.
+  version: 1.0
+
+properties:
+  project_id:
+    type: string
+    description: Your GCP Project ID where resources will be deployed.
+    x-googleProperty:
+      type: GAE_PROJECT_ID
+  zone:
+    type: string
+    description: The GCP zone to deploy the VM into (e.g., us-central1-a).
+    default: us-central1-a
+  deployment_name:
+    type: string
+    description: A unique name for this deployment instance (e.g., hyperswitch-dev).
+    default: hyperswitch-instance
+
+# Optional: Define required properties if they don't have defaults
+# required:
+#  - project_id 

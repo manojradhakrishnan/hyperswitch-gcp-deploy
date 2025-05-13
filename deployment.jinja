@@ -1,0 +1,164 @@
+{% set DEPLOYMENT_NAME = properties["deployment_name"] %}
+
+resources:
+- name: {{ DEPLOYMENT_NAME }}-vm
+  type: compute.v1.instance
+  properties:
+    zone: {{ properties["zone"] }}
+    machineType: zones/{{ properties["zone"] }}/machineTypes/f1-micro
+    disks:
+    - deviceName: boot
+      type: PERSISTENT
+      boot: true
+      autoDelete: true
+      initializeParams:
+        sourceImage: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        diskSizeGb: 10
+    networkInterfaces:
+    - network: projects/{{ env["project"] }}/global/networks/default # Uses the project from context
+      accessConfigs:
+      - name: External NAT
+        type: ONE_TO_ONE_NAT
+    tags:
+      items:
+      - {{ DEPLOYMENT_NAME }}-http-server
+      - {{ DEPLOYMENT_NAME }}-ssh
+    metadata:
+      items:
+      - key: startup-script
+        value: |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/startup-script.log) 2>&1
+
+          echo "Startup script started at $(date)"
+
+          # System update and essential packages
+          apt-get update -y
+          apt-get upgrade -y
+          apt-get install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release redis-server
+
+          systemctl enable redis-server
+          systemctl start redis-server
+          echo "Redis installed and started."
+
+          # Install Docker
+          echo "Installing Docker..."
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            tee /etc/apt/sources.list.d/docker.list > /dev/null
+          apt-get update -y
+          apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          systemctl enable docker
+          systemctl start docker
+          echo "Docker installed and started."
+
+          # Create directory for Hyperswitch
+          mkdir -p /opt/hyperswitch
+          cd /opt/hyperswitch
+
+          # Fetch External IP for APP_BASE_URL
+          EXTERNAL_IP=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -s)
+          if [ -z "$EXTERNAL_IP" ]; then
+            echo "WARNING: Could not determine external IP address. APP_BASE_URL will be incomplete."
+            APP_BASE_URL="http://YOUR_VM_IP:8080" # Fallback
+          else
+            APP_BASE_URL="http://${EXTERNAL_IP}:8080"
+          fi
+          echo "External IP detected: ${EXTERNAL_IP}. APP_BASE_URL set to: ${APP_BASE_URL}"
+
+          # Create .env file for Hyperswitch
+          echo "Creating .env file..."
+          cat <<EOF > /opt/hyperswitch/.env
+          # Hyperswitch Environment Variables
+          DATABASE_URL=postgresql://hyperswitch_user:hyperswitch_password@localhost:5432/hyperswitch_db
+          REDIS_URL=redis://localhost:6379
+          APP_BASE_URL=${APP_BASE_URL}
+          ADMIN_API_KEY=SET_YOUR_STRONG_ADMIN_API_KEY_HERE # <<< IMPORTANT: Change this!
+          # LOCKER_HOST=http://localhost:8082
+          # MASTER_KEY=your_32_byte_master_key_here
+          EOF
+          echo ".env file created."
+          cat /opt/hyperswitch/.env
+
+          # Create docker-compose.yml
+          echo "Creating docker-compose.yml..."
+          cat <<EOF > /opt/hyperswitch/docker-compose.yml
+          version: '3.8'
+          services:
+            postgres:
+              image: postgres:15
+              container_name: hyperswitch_postgres
+              environment:
+                POSTGRES_USER: hyperswitch_user
+                POSTGRES_PASSWORD: hyperswitch_password
+                POSTGRES_DB: hyperswitch_db
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U hyperswitch_user -d hyperswitch_db"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+            hyperswitch:
+              image: hyperswitch/hyperswitch:latest
+              container_name: hyperswitch_app
+              env_file:
+                - .env
+              network_mode: "host"
+              depends_on:
+                postgres:
+                  condition: service_healthy
+              restart: unless-stopped
+          volumes:
+            postgres_data:
+          EOF
+          echo "docker-compose.yml created."
+
+          # Start Hyperswitch and PostgreSQL
+          echo "Running docker compose up -d..."
+          docker compose -f /opt/hyperswitch/docker-compose.yml up -d
+
+          echo "Docker containers started:"
+          docker ps -a
+          echo "Startup script finished at $(date)"
+          echo "You should be able to access Hyperswitch at ${APP_BASE_URL} after a few minutes."
+    serviceAccounts:
+    - email: default
+      scopes:
+      - https://www.googleapis.com/auth/cloud-platform
+
+- name: {{ DEPLOYMENT_NAME }}-allow-ssh
+  type: compute.v1.firewall
+  properties:
+    network: projects/{{ env["project"] }}/global/networks/default
+    targetTags:
+    - {{ DEPLOYMENT_NAME }}-ssh
+    allowed:
+    - IPProtocol: tcp
+      ports: ["22"]
+    sourceRanges: ["0.0.0.0/0"]
+
+- name: {{ DEPLOYMENT_NAME }}-allow-http-8080
+  type: compute.v1.firewall
+  properties:
+    network: projects/{{ env["project"] }}/global/networks/default
+    targetTags:
+    - {{ DEPLOYMENT_NAME }}-http-server
+    allowed:
+    - IPProtocol: tcp
+      ports: ["8080"]
+    sourceRanges: ["0.0.0.0/0"]
+
+outputs:
+- name: instanceName
+  value: {{ DEPLOYMENT_NAME }}-vm
+- name: instanceIp
+  value: $(ref.{{ DEPLOYMENT_NAME }}-vm.networkInterfaces[0].accessConfigs[0].natIP)
+- name: sshCommand
+  value: gcloud compute ssh --project {{ env["project"] }} --zone {{ properties["zone"] }} {{ DEPLOYMENT_NAME }}-vm 
