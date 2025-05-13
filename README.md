@@ -53,7 +53,7 @@ After opening Cloud Shell using the button above, your repository files will be 
     # Create the deployment (you can change 'hyperswitch-deployment' to a name of your choice)
     # It will use default values from schema.yaml unless you provide properties.
     gcloud deployment-manager deployments create hyperswitch-deployment \
-        --config deployment.jinja \
+        --template deployment.jinja \
         --properties "project_id:YOUR_PROJECT_ID,zone:us-central1-a,deployment_name:hyperswitch-instance"
     ```
     *   Replace `YOUR_PROJECT_ID` with your actual GCP Project ID in both commands.
@@ -94,7 +94,7 @@ After opening Cloud Shell using the button above, your repository files will be 
 If you change `deployment.jinja` or `schema.yaml`:
 ```bash
 gcloud deployment-manager deployments update hyperswitch-deployment \
-    --config deployment.jinja \
+    --template deployment.jinja \
     --properties "project_id:YOUR_PROJECT_ID,zone:us-central1-a,deployment_name:hyperswitch-instance"
 ```
 
